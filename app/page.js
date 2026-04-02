@@ -2,24 +2,22 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, PieChart, Pie, Cell
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 
-const COLORS = ['#7c3aed', '#2563eb', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
 const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => `${i}:00`);
 
 function StatCard({ emoji, label, value, sub, trend }) {
   const trendColor = trend > 0 ? 'text-emerald-400' : trend < 0 ? 'text-red-400' : 'text-zinc-500';
   const trendIcon = trend > 0 ? '↑' : trend < 0 ? '↓' : '';
   return (
-    <div className="glow-card stat-card p-5">
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-xl">{emoji}</span>
-        <span className="text-zinc-400 text-sm font-medium">{label}</span>
+    <div className="glow-card stat-card p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-lg">{emoji}</span>
+        <span className="text-zinc-400 text-xs font-medium uppercase tracking-wide">{label}</span>
       </div>
-      <p className="text-3xl font-bold text-white tracking-tight">{value}</p>
-      <div className="flex items-center gap-2 mt-1">
+      <p className="text-2xl font-bold text-white tracking-tight">{value}</p>
+      <div className="flex items-center gap-2 mt-0.5">
         {sub && <span className="text-zinc-500 text-xs">{sub}</span>}
         {trend !== undefined && trend !== null && (
           <span className={`text-xs font-medium ${trendColor}`}>{trendIcon} {Math.abs(trend)}%</span>
@@ -32,37 +30,39 @@ function StatCard({ emoji, label, value, sub, trend }) {
 function FunnelStep({ emoji, label, value, total, color }) {
   const pct = total > 0 ? (value / total) * 100 : 0;
   return (
-    <div className="flex items-center gap-4">
-      <span className="text-lg w-8 text-center">{emoji}</span>
-      <div className="flex-1">
-        <div className="flex justify-between mb-1">
-          <span className="text-sm text-zinc-300">{label}</span>
-          <span className="text-sm font-mono text-zinc-400">{value}</span>
+    <div className="flex items-center gap-3">
+      <span className="text-base w-6 text-center">{emoji}</span>
+      <div className="flex-1 min-w-0">
+        <div className="flex justify-between mb-0.5">
+          <span className="text-xs text-zinc-300">{label}</span>
+          <span className="text-xs font-mono text-zinc-500">{value} · {pct.toFixed(0)}%</span>
         </div>
-        <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+        <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
           <div className="funnel-bar h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
         </div>
       </div>
-      <span className="text-xs text-zinc-500 w-12 text-right">{pct.toFixed(0)}%</span>
     </div>
   );
 }
 
-function SectionTitle({ emoji, title }) {
+function SectionTitle({ emoji, title, right }) {
   return (
-    <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
-      <span>{emoji}</span> {title}
-    </h2>
+    <div className="flex items-center justify-between mb-3">
+      <h2 className="text-sm font-semibold text-white flex items-center gap-1.5">
+        <span>{emoji}</span> {title}
+      </h2>
+      {right && <span className="text-xs text-zinc-500">{right}</span>}
+    </div>
   );
 }
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 shadow-xl">
-      <p className="text-xs text-zinc-400 mb-1">{label}</p>
+    <div className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 shadow-xl text-xs">
+      <p className="text-zinc-400 mb-1">{label}</p>
       {payload.map((p, i) => (
-        <p key={i} className="text-sm font-medium" style={{ color: p.color }}>
+        <p key={i} className="font-medium" style={{ color: p.color }}>
           {p.name}: {p.value}
         </p>
       ))}
@@ -80,14 +80,10 @@ export default function Dashboard() {
     try {
       const res = await fetch(`/api/stats?days=${days}`);
       if (!res.ok) throw new Error('Failed to load stats');
-      const data = await res.json();
-      setStats(data);
+      setStats(await res.json());
       setError(null);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
   }, [days]);
 
   useEffect(() => {
@@ -97,23 +93,30 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchStats]);
 
-  // Trend calculation
-  const trend = stats && stats.yesterday_views > 0
+  const trend = stats?.yesterday_views > 0
     ? Math.round(((stats.today_views - stats.yesterday_views) / stats.yesterday_views) * 100)
     : null;
 
-  // Format duration
-  const formatDuration = (s) => {
-    if (s < 60) return `${s}s`;
-    return `${Math.floor(s / 60)}m ${s % 60}s`;
-  };
+  const formatDuration = (s) => s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 
-  // Hourly data
   const hourlyData = stats?.hourly_distribution
     ? HOUR_LABELS.map((label, i) => {
         const found = stats.hourly_distribution.find(h => parseInt(h.hour) === i);
         return { hour: label, views: parseInt(found?.count || 0) };
       })
+    : [];
+
+  const maxHourly = Math.max(...hourlyData.map(h => h.views), 1);
+
+  // Build VSL retention curve
+  const watchtimeData = stats?.vsl_watchtime
+    ? [{ percent: 0, viewers: stats.vsl_plays || 0, retention: 100 },
+      ...([10,20,30,40,50,60,70,80,90,100].map(p => {
+        const found = stats.vsl_watchtime.find(w => parseInt(w.percent) === p);
+        const viewers = parseInt(found?.viewers || 0);
+        const retention = stats.vsl_plays > 0 ? Math.round((viewers / stats.vsl_plays) * 100) : 0;
+        return { percent: p, viewers, retention };
+      }))]
     : [];
 
   if (error) {
@@ -132,260 +135,304 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen p-4 md:p-8 max-w-[1400px] mx-auto">
+    <div className="min-h-screen p-4 md:p-6 max-w-[1400px] mx-auto">
       {/* Header */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-blue-600 flex items-center justify-center text-xl shadow-lg shadow-violet-500/20">
-            📊
-          </div>
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-600 to-blue-600 flex items-center justify-center text-lg shadow-lg shadow-violet-500/20">📊</div>
           <div>
-            <h1 className="text-xl font-bold text-white">TERMINIFY.AI</h1>
             <div className="flex items-center gap-2">
-              <span className="text-zinc-500 text-sm">Analytics Dashboard</span>
-              {stats && stats.live_visitors > 0 && (
-                <span className="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 text-xs font-medium px-2 py-0.5 rounded-full">
+              <h1 className="text-lg font-bold text-white">TERMINIFY.AI</h1>
+              {stats?.live_visitors > 0 && (
+                <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
                   <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full live-pulse"></span>
                   {stats.live_visitors} live
                 </span>
               )}
             </div>
+            <p className="text-zinc-500 text-xs">Analytics Dashboard</p>
           </div>
         </div>
-        <div className="flex gap-1 bg-zinc-900 border border-zinc-800 rounded-xl p-1">
-          {[{ d: 1, l: '⚡ Heute' }, { d: 7, l: '📅 7 Tage' }, { d: 30, l: '📆 30 Tage' }, { d: 90, l: '📊 90 Tage' }].map(({ d, l }) => (
-            <button
-              key={d}
-              onClick={() => setDays(d)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                days === d
-                  ? 'bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-lg shadow-violet-500/20'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-              }`}
-            >
-              {l}
-            </button>
+        <div className="flex gap-1 bg-zinc-900/80 border border-zinc-800 rounded-lg p-0.5">
+          {[{ d: 1, l: '⚡ Heute' }, { d: 7, l: '📅 7T' }, { d: 30, l: '📆 30T' }, { d: 90, l: '📊 90T' }].map(({ d, l }) => (
+            <button key={d} onClick={() => setDays(d)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                days === d ? 'bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-lg shadow-violet-500/20' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              }`}>{l}</button>
           ))}
         </div>
       </div>
 
       {loading && !stats ? (
         <div className="flex flex-col items-center justify-center h-64 gap-3">
-          <div className="w-10 h-10 rounded-full border-2 border-violet-500 border-t-transparent animate-spin"></div>
-          <p className="text-zinc-500 text-sm">Daten werden geladen...</p>
+          <div className="w-8 h-8 rounded-full border-2 border-violet-500 border-t-transparent animate-spin"></div>
+          <p className="text-zinc-500 text-xs">Laden...</p>
         </div>
       ) : stats ? (
         <>
           {/* Stat Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-6">
-            <StatCard emoji="👁️" label="Seitenaufrufe" value={stats.total_views.toLocaleString('de-DE')} sub={`Heute: ${stats.today_views}`} trend={trend} />
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+            <StatCard emoji="👁️" label="Aufrufe" value={stats.total_views.toLocaleString('de-DE')} sub={`Heute: ${stats.today_views}`} trend={trend} />
             <StatCard emoji="👤" label="Besucher" value={stats.unique_visitors.toLocaleString('de-DE')} />
             <StatCard emoji="🖱️" label="CTA Klicks" value={stats.cta_clicks.toLocaleString('de-DE')} sub="Buchungs-Button" />
             <StatCard emoji="📈" label="Conversion" value={`${stats.conversion_rate}%`} sub="Klick / Aufruf" />
-            <StatCard emoji="⏱️" label="Ø Verweildauer" value={formatDuration(stats.avg_duration)} />
-            <StatCard emoji="📜" label="Ø Scroll-Tiefe" value={`${stats.avg_scroll_depth}%`} />
+            <StatCard emoji="⏱️" label="Verweildauer" value={formatDuration(stats.avg_duration)} />
+            <StatCard emoji="📜" label="Scroll-Tiefe" value={`${stats.avg_scroll_depth}%`} />
           </div>
 
-          {/* Main Charts Row */}
-          <div className="grid lg:grid-cols-3 gap-4 mb-4">
-            {/* Views Chart - spans 2 cols */}
-            <div className="lg:col-span-2 glow-card p-5">
+          {/* Row 1: Traffic Chart + VSL Watchtime */}
+          <div className="grid lg:grid-cols-5 gap-3 mb-3">
+            <div className="lg:col-span-3 glow-card p-4">
               <SectionTitle emoji="📈" title="Aufrufe & Besucher" />
               {stats.views_over_time.length > 0 ? (
-                <ResponsiveContainer width="100%" height={280}>
+                <ResponsiveContainer width="100%" height={220}>
                   <AreaChart data={stats.views_over_time}>
                     <defs>
-                      <linearGradient id="gViews" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#7c3aed" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="#7c3aed" stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="gVisitors" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#2563eb" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="#2563eb" stopOpacity={0} />
-                      </linearGradient>
+                      <linearGradient id="gV" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7c3aed" stopOpacity={0.3}/><stop offset="100%" stopColor="#7c3aed" stopOpacity={0}/></linearGradient>
+                      <linearGradient id="gU" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2563eb" stopOpacity={0.3}/><stop offset="100%" stopColor="#2563eb" stopOpacity={0}/></linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1a1a3e" />
-                    <XAxis dataKey="date" stroke="#525280" tick={{ fontSize: 11 }}
-                      tickFormatter={(d) => new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })} />
-                    <YAxis stroke="#525280" tick={{ fontSize: 11 }} />
+                    <XAxis dataKey="date" stroke="#525280" tick={{ fontSize: 10 }} tickFormatter={(d) => new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })} />
+                    <YAxis stroke="#525280" tick={{ fontSize: 10 }} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Area type="monotone" dataKey="views" stroke="#7c3aed" strokeWidth={2} fill="url(#gViews)" name="Aufrufe" />
-                    <Area type="monotone" dataKey="visitors" stroke="#2563eb" strokeWidth={2} fill="url(#gVisitors)" name="Besucher" />
+                    <Area type="monotone" dataKey="views" stroke="#7c3aed" strokeWidth={2} fill="url(#gV)" name="Aufrufe" />
+                    <Area type="monotone" dataKey="visitors" stroke="#2563eb" strokeWidth={2} fill="url(#gU)" name="Besucher" />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex flex-col items-center justify-center h-64 text-zinc-600">
-                  <span className="text-4xl mb-2">📭</span>
-                  <p>Noch keine Daten vorhanden</p>
+                <div className="flex flex-col items-center justify-center h-52 text-zinc-600">
+                  <span className="text-3xl mb-2">📭</span><p className="text-sm">Noch keine Daten</p>
                 </div>
               )}
             </div>
 
-            {/* Conversion Funnel */}
-            <div className="glow-card p-5">
-              <SectionTitle emoji="🔥" title="Conversion Funnel" />
-              <div className="space-y-5 mt-2">
-                <FunnelStep emoji="👁️" label="Seitenaufrufe" value={stats.total_views} total={stats.total_views} color="#7c3aed" />
-                <FunnelStep emoji="📜" label="50% gescrollt" value={stats.scroll_milestones?.find(m => parseInt(m.milestone) === 50)?.count || 0} total={stats.total_views} color="#2563eb" />
-                <FunnelStep emoji="📜" label="100% gescrollt" value={stats.scroll_milestones?.find(m => parseInt(m.milestone) === 100)?.count || 0} total={stats.total_views} color="#06b6d4" />
-                <FunnelStep emoji="🖱️" label="CTA Klicks" value={stats.cta_clicks} total={stats.total_views} color="#10b981" />
-              </div>
-              <div className="mt-5 pt-4 border-t border-zinc-800">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-zinc-400">Conversion Rate</span>
-                  <span className="text-xl font-bold bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-transparent">
-                    {stats.conversion_rate}%
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Second Row */}
-          <div className="grid lg:grid-cols-3 gap-4 mb-4">
-            {/* Hourly Distribution */}
-            <div className="glow-card p-5">
-              <SectionTitle emoji="🕐" title="Besucher nach Uhrzeit" />
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={hourlyData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1a1a3e" />
-                  <XAxis dataKey="hour" stroke="#525280" tick={{ fontSize: 9 }} interval={2} />
-                  <YAxis stroke="#525280" tick={{ fontSize: 10 }} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="views" name="Aufrufe" radius={[3, 3, 0, 0]}>
-                    {hourlyData.map((_, i) => (
-                      <Cell key={i} fill={`hsl(${260 - i * 4}, 70%, ${45 + (hourlyData[i]?.views || 0) * 2}%)`} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Devices */}
-            <div className="glow-card p-5">
-              <SectionTitle emoji="📱" title="Geräte" />
-              {stats.devices.length > 0 ? (
-                <div className="flex items-center">
-                  <ResponsiveContainer width="50%" height={200}>
-                    <PieChart>
-                      <Pie data={stats.devices} dataKey="count" nameKey="device" cx="50%" cy="50%" outerRadius={70} innerRadius={40} strokeWidth={0}>
-                        {stats.devices.map((_, i) => (
-                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                        ))}
-                      </Pie>
-                    </PieChart>
+            {/* VSL Watchtime Retention */}
+            <div className="lg:col-span-2 glow-card p-4">
+              <SectionTitle emoji="🎥" title="VSL Watchtime" right={stats.vsl_plays > 0 ? `${stats.vsl_plays} Plays · ${stats.vsl_completion_rate}% fertig geschaut` : ''} />
+              {watchtimeData.length > 1 && stats.vsl_plays > 0 ? (
+                <>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <AreaChart data={watchtimeData}>
+                      <defs>
+                        <linearGradient id="gW" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#f59e0b" stopOpacity={0.4}/><stop offset="100%" stopColor="#f59e0b" stopOpacity={0}/></linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1a1a3e" />
+                      <XAxis dataKey="percent" stroke="#525280" tick={{ fontSize: 10 }} tickFormatter={v => `${v}%`} />
+                      <YAxis stroke="#525280" tick={{ fontSize: 10 }} tickFormatter={v => `${v}%`} domain={[0, 100]} />
+                      <Tooltip content={({ active, payload }) => active && payload?.length ? (
+                        <div className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 shadow-xl text-xs">
+                          <p className="text-zinc-400">Video bei {payload[0].payload.percent}%</p>
+                          <p className="text-amber-400 font-medium">{payload[0].payload.retention}% schauen noch</p>
+                          <p className="text-zinc-500">{payload[0].payload.viewers} Zuschauer</p>
+                        </div>
+                      ) : null} />
+                      <Area type="monotone" dataKey="retention" stroke="#f59e0b" strokeWidth={2} fill="url(#gW)" name="Retention" />
+                    </AreaChart>
                   </ResponsiveContainer>
-                  <div className="space-y-3">
-                    {stats.devices.map((d, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                        <span className="text-sm text-zinc-300">{d.device === 'Mobile' ? '📱' : d.device === 'Tablet' ? '📟' : '🖥️'} {d.device}</span>
-                        <span className="text-xs text-zinc-500 font-mono">{d.count}</span>
+                  {/* Pause hotspots */}
+                  {stats.vsl_pause_points?.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-zinc-800">
+                      <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">⏸️ Häufigste Abbruchstellen</p>
+                      <div className="flex flex-wrap gap-1">
+                        {stats.vsl_pause_points.slice(0, 5).map((p, i) => (
+                          <span key={i} className="text-[11px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded">{p.percent}% ({p.count}x)</span>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-zinc-600 text-sm text-center py-8">Keine Daten</p>
-              )}
-            </div>
-
-            {/* Video Plays */}
-            <div className="glow-card p-5">
-              <SectionTitle emoji="🎬" title="Video Plays" />
-              {stats.video_plays?.length > 0 ? (
-                <div className="space-y-3">
-                  {stats.video_plays.map((v, i) => (
-                    <div key={i} className="flex justify-between items-center">
-                      <span className="text-zinc-300 text-sm truncate mr-2">🎥 {v.video || 'unknown'}</span>
-                      <span className="text-zinc-400 text-sm font-mono bg-zinc-800 px-2 py-0.5 rounded">{v.count}x</span>
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               ) : (
-                <div className="flex flex-col items-center justify-center h-40 text-zinc-600">
-                  <span className="text-3xl mb-2">🎬</span>
-                  <p className="text-sm">Noch keine Video-Plays</p>
+                <div className="flex flex-col items-center justify-center h-52 text-zinc-600">
+                  <span className="text-3xl mb-2">🎥</span>
+                  <p className="text-sm">Noch keine Video-Daten</p>
+                  <p className="text-xs text-zinc-700 mt-1">Daten kommen sobald jemand das VSL schaut</p>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Third Row */}
-          <div className="grid lg:grid-cols-3 gap-4">
-            {/* Top Referrers */}
-            <div className="glow-card p-5">
-              <SectionTitle emoji="🔗" title="Top Referrer" />
-              {stats.top_referrers.length > 0 ? (
-                <div className="space-y-2.5">
-                  {stats.top_referrers.map((r, i) => {
-                    const pct = stats.total_views > 0 ? (parseInt(r.count) / stats.total_views) * 100 : 0;
+          {/* Row 2: Funnel + Hourly + Devices */}
+          <div className="grid lg:grid-cols-5 gap-3 mb-3">
+            {/* Conversion Funnel */}
+            <div className="lg:col-span-2 glow-card p-4">
+              <SectionTitle emoji="🔥" title="Conversion Funnel" />
+              <div className="space-y-3">
+                <FunnelStep emoji="👁️" label="Seitenaufrufe" value={stats.total_views} total={stats.total_views} color="#7c3aed" />
+                <FunnelStep emoji="▶️" label="VSL gestartet" value={stats.vsl_plays} total={stats.total_views} color="#8b5cf6" />
+                <FunnelStep emoji="📜" label="50% gescrollt" value={parseInt(stats.scroll_milestones?.find(m => parseInt(m.milestone) === 50)?.count || 0)} total={stats.total_views} color="#2563eb" />
+                <FunnelStep emoji="🎥" label="VSL 50%+ geschaut" value={parseInt(stats.vsl_watchtime?.find(w => parseInt(w.percent) === 50)?.viewers || 0)} total={stats.total_views} color="#06b6d4" />
+                <FunnelStep emoji="✅" label="VSL komplett" value={stats.vsl_completes} total={stats.total_views} color="#10b981" />
+                <FunnelStep emoji="🖱️" label="CTA geklickt" value={stats.cta_clicks} total={stats.total_views} color="#f59e0b" />
+              </div>
+              <div className="mt-3 pt-3 border-t border-zinc-800 flex justify-between items-center">
+                <span className="text-xs text-zinc-400">Gesamt-Conversion</span>
+                <span className="text-lg font-bold bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-transparent">{stats.conversion_rate}%</span>
+              </div>
+            </div>
+
+            {/* Hourly + Devices stacked */}
+            <div className="lg:col-span-3 grid grid-rows-2 gap-3">
+              {/* Hourly */}
+              <div className="glow-card p-4">
+                <SectionTitle emoji="🕐" title="Besucher nach Uhrzeit" />
+                <div className="flex items-end gap-[3px] h-[80px]">
+                  {hourlyData.map((h, i) => {
+                    const pct = maxHourly > 0 ? (h.views / maxHourly) * 100 : 0;
+                    const isActive = h.views > 0;
+                    return (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-0.5 group relative">
+                        <div className="w-full rounded-sm transition-all" style={{
+                          height: `${Math.max(pct, 3)}%`,
+                          background: isActive ? `linear-gradient(to top, #7c3aed, #2563eb)` : '#1a1a3e',
+                          opacity: isActive ? 0.6 + (pct / 200) : 0.3
+                        }} />
+                        <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-zinc-800 text-white text-[9px] px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
+                          {h.hour}: {h.views}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-[9px] text-zinc-600">0:00</span>
+                  <span className="text-[9px] text-zinc-600">6:00</span>
+                  <span className="text-[9px] text-zinc-600">12:00</span>
+                  <span className="text-[9px] text-zinc-600">18:00</span>
+                  <span className="text-[9px] text-zinc-600">23:00</span>
+                </div>
+              </div>
+
+              {/* Devices + Referrer combined */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="glow-card p-4">
+                  <SectionTitle emoji="📱" title="Geräte" />
+                  {stats.devices.length > 0 ? (
+                    <div className="space-y-2">
+                      {stats.devices.map((d, i) => {
+                        const total = stats.devices.reduce((s, x) => s + parseInt(x.count), 0);
+                        const pct = total > 0 ? ((parseInt(d.count) / total) * 100).toFixed(0) : 0;
+                        const icon = d.device === 'Mobile' ? '📱' : d.device === 'Tablet' ? '📟' : '🖥️';
+                        const colors = ['#7c3aed', '#2563eb', '#06b6d4'];
+                        return (
+                          <div key={i}>
+                            <div className="flex justify-between mb-0.5">
+                              <span className="text-xs text-zinc-300">{icon} {d.device}</span>
+                              <span className="text-xs text-zinc-500">{pct}% · {d.count}</span>
+                            </div>
+                            <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: colors[i] || '#7c3aed' }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : <p className="text-zinc-600 text-xs">Keine Daten</p>}
+                </div>
+
+                <div className="glow-card p-4">
+                  <SectionTitle emoji="🔗" title="Referrer" />
+                  {stats.top_referrers.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {stats.top_referrers.slice(0, 5).map((r, i) => {
+                        let domain;
+                        try { domain = new URL(r.referrer).hostname.replace('www.', ''); } catch { domain = r.referrer; }
+                        return (
+                          <div key={i} className="flex justify-between items-center">
+                            <span className="text-xs text-zinc-300 truncate mr-2">{domain}</span>
+                            <span className="text-[10px] font-mono text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">{r.count}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : <p className="text-zinc-600 text-xs">Keine Referrer</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 3: Videos + Buttons + UTM */}
+          <div className="grid lg:grid-cols-3 gap-3">
+            {/* Testimonial Videos */}
+            <div className="glow-card p-4">
+              <SectionTitle emoji="🎬" title="Testimonial Videos" right={stats.video_plays?.length > 0 ? `${stats.video_plays.reduce((s, v) => s + parseInt(v.count), 0)} total` : ''} />
+              {stats.video_plays?.length > 0 ? (
+                <div className="space-y-2">
+                  {stats.video_plays.map((v, i) => {
+                    const totalPlays = stats.video_plays.reduce((s, x) => s + parseInt(x.count), 0);
+                    const pct = totalPlays > 0 ? (parseInt(v.count) / totalPlays) * 100 : 0;
                     return (
                       <div key={i}>
-                        <div className="flex justify-between mb-1">
-                          <span className="text-zinc-300 text-sm truncate mr-2">{r.referrer}</span>
-                          <span className="text-zinc-500 text-xs font-mono">{r.count}</span>
+                        <div className="flex justify-between mb-0.5">
+                          <span className="text-xs text-zinc-300">🎥 {v.video}</span>
+                          <span className="text-xs text-zinc-500">{v.count}x</span>
                         </div>
-                        <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
-                          <div className="h-full bg-gradient-to-r from-violet-600 to-blue-600 rounded-full" style={{ width: `${pct}%` }} />
+                        <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full bg-gradient-to-r from-violet-600 to-blue-500" style={{ width: `${pct}%` }} />
                         </div>
                       </div>
                     );
                   })}
                 </div>
               ) : (
-                <p className="text-zinc-600 text-sm text-center py-8">Keine Referrer-Daten</p>
+                <p className="text-zinc-600 text-xs py-4 text-center">Noch keine Testimonial-Views</p>
               )}
             </div>
 
-            {/* UTM Sources */}
-            <div className="glow-card p-5">
-              <SectionTitle emoji="🎯" title="UTM Kampagnen" />
-              {stats.utm_sources?.length > 0 ? (
-                <div className="space-y-3">
-                  {stats.utm_sources.map((u, i) => (
-                    <div key={i} className="flex justify-between items-center bg-zinc-800/50 rounded-lg p-2.5">
-                      <div>
-                        <span className="text-zinc-200 text-sm font-medium">{u.source || '–'}</span>
-                        <span className="text-zinc-500 text-xs ml-2">/ {u.medium || '–'}</span>
-                      </div>
-                      <span className="text-zinc-400 text-sm font-mono">{u.count}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-40 text-zinc-600">
-                  <span className="text-3xl mb-2">🎯</span>
-                  <p className="text-sm">Keine UTM-Daten</p>
-                  <p className="text-xs text-zinc-700 mt-1">?utm_source=... nutzen</p>
-                </div>
-              )}
-            </div>
-
-            {/* Button Clicks */}
-            <div className="glow-card p-5">
+            {/* Button/CTA Klicks */}
+            <div className="glow-card p-4">
               <SectionTitle emoji="🖱️" title="Button Klicks" />
               {stats.button_clicks?.length > 0 ? (
-                <div className="space-y-3">
-                  {stats.button_clicks.map((b, i) => (
-                    <div key={i} className="flex justify-between items-center">
-                      <span className="text-zinc-300 text-sm truncate mr-2">{b.text || 'unknown'}</span>
-                      <span className="text-zinc-400 text-sm font-mono bg-zinc-800 px-2 py-0.5 rounded">{b.count}x</span>
+                <div className="space-y-2">
+                  {stats.button_clicks.map((b, i) => {
+                    const label = (b.text || '').replace(/\s+/g, ' ').substring(0, 40);
+                    const totalClicks = stats.button_clicks.reduce((s, x) => s + parseInt(x.count), 0);
+                    const pct = totalClicks > 0 ? (parseInt(b.count) / totalClicks) * 100 : 0;
+                    return (
+                      <div key={i}>
+                        <div className="flex justify-between mb-0.5">
+                          <span className="text-xs text-zinc-300 truncate mr-2">{label || '–'}</span>
+                          <span className="text-xs text-zinc-500">{b.count}x</span>
+                        </div>
+                        <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-zinc-600 text-xs py-4 text-center">Noch keine Button-Klicks</p>
+              )}
+            </div>
+
+            {/* UTM Campaigns */}
+            <div className="glow-card p-4">
+              <SectionTitle emoji="🎯" title="Kampagnen & UTM" />
+              {stats.utm_sources?.length > 0 ? (
+                <div className="space-y-2">
+                  {stats.utm_sources.map((u, i) => (
+                    <div key={i} className="flex items-center justify-between bg-zinc-800/40 rounded-lg px-2.5 py-2">
+                      <div className="min-w-0">
+                        <span className="text-xs text-zinc-200 font-medium block truncate">{u.source || '–'}</span>
+                        <span className="text-[10px] text-zinc-500">{u.medium || '–'}{u.campaign ? ` · ${u.campaign}` : ''}</span>
+                      </div>
+                      <span className="text-xs font-mono text-zinc-400 ml-2 shrink-0">{u.count}</span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center h-40 text-zinc-600">
-                  <span className="text-3xl mb-2">🖱️</span>
-                  <p className="text-sm">Noch keine Button-Klicks</p>
+                <div className="py-4 text-center">
+                  <p className="text-zinc-600 text-xs">Keine UTM-Daten</p>
+                  <p className="text-[10px] text-zinc-700 mt-1">Nutze <span className="text-zinc-500 font-mono">?utm_source=instagram</span></p>
+                  <p className="text-[10px] text-zinc-700">in deinen Links für Kampagnen-Tracking</p>
                 </div>
               )}
             </div>
           </div>
 
           {/* Footer */}
-          <div className="mt-8 text-center text-zinc-700 text-xs">
-            🔄 Auto-Refresh alle 30 Sekunden · Daten der letzten {days} Tage
+          <div className="mt-6 text-center text-zinc-700 text-[10px]">
+            🔄 Auto-Refresh alle 30s · Letzte {days} Tage · TERMINIFY.AI Analytics
           </div>
         </>
       ) : null}
