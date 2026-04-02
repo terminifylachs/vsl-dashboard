@@ -70,17 +70,41 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
+function formatTimeAgo(dateStr) {
+  if (!dateStr) return '–';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'gerade eben';
+  if (mins < 60) return `vor ${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `vor ${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `vor ${days}d`;
+}
+
+function formatTime(dateStr) {
+  if (!dateStr) return '–';
+  return new Date(dateStr).toLocaleString('de-DE', {
+    day: '2-digit', month: '2-digit', year: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+    timeZone: 'Europe/Berlin'
+  });
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [lastFetch, setLastFetch] = useState(null);
 
   const fetchStats = useCallback(async () => {
     try {
       const res = await fetch(`/api/stats?days=${days}`);
       if (!res.ok) throw new Error('Failed to load stats');
-      setStats(await res.json());
+      const data = await res.json();
+      setStats(data);
+      setLastFetch(new Date().toISOString());
       setError(null);
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
@@ -153,13 +177,31 @@ export default function Dashboard() {
             <p className="text-zinc-500 text-xs">Analytics Dashboard</p>
           </div>
         </div>
-        <div className="flex gap-1 bg-zinc-900/80 border border-zinc-800 rounded-lg p-0.5">
-          {[{ d: 1, l: '⚡ Heute' }, { d: 7, l: '📅 7T' }, { d: 30, l: '📆 30T' }, { d: 90, l: '📊 90T' }].map(({ d, l }) => (
-            <button key={d} onClick={() => setDays(d)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                days === d ? 'bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-lg shadow-violet-500/20' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-              }`}>{l}</button>
-          ))}
+
+        <div className="flex items-center gap-3">
+          {/* Last update info */}
+          {stats && (
+            <div className="text-right hidden md:block">
+              <div className="text-[10px] text-zinc-500 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-violet-500 rounded-full"></span>
+                Aktualisiert: {formatTime(lastFetch)}
+              </div>
+              {stats.last_activity && (
+                <div className="text-[10px] text-zinc-600">
+                  Letzte Aktivität: {formatTimeAgo(stats.last_activity)}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex gap-1 bg-zinc-900/80 border border-zinc-800 rounded-lg p-0.5">
+            {[{ d: 1, l: '⚡ Heute' }, { d: 7, l: '📅 7T' }, { d: 30, l: '📆 30T' }, { d: 90, l: '📊 90T' }].map(({ d, l }) => (
+              <button key={d} onClick={() => setDays(d)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  days === d ? 'bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-lg shadow-violet-500/20' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                }`}>{l}</button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -170,6 +212,15 @@ export default function Dashboard() {
         </div>
       ) : stats ? (
         <>
+          {/* Mobile: last update */}
+          {stats && (
+            <div className="md:hidden mb-4 flex items-center gap-2 text-[10px] text-zinc-500">
+              <span className="w-1.5 h-1.5 bg-violet-500 rounded-full"></span>
+              Aktualisiert: {formatTime(lastFetch)}
+              {stats.last_activity && <span>· Letzte Aktivität: {formatTimeAgo(stats.last_activity)}</span>}
+            </div>
+          )}
+
           {/* Stat Cards */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
             <StatCard emoji="👁️" label="Aufrufe" value={stats.total_views.toLocaleString('de-DE')} sub={`Heute: ${stats.today_views}`} trend={trend} />
@@ -208,7 +259,7 @@ export default function Dashboard() {
 
             {/* VSL Watchtime Retention */}
             <div className="lg:col-span-2 glow-card p-4">
-              <SectionTitle emoji="🎥" title="VSL Watchtime" right={stats.vsl_plays > 0 ? `${stats.vsl_plays} Plays · ${stats.vsl_completion_rate}% fertig geschaut` : ''} />
+              <SectionTitle emoji="🎥" title="VSL Watchtime" right={stats.vsl_plays > 0 ? `${stats.vsl_plays} Plays · ${stats.vsl_completion_rate}% komplett` : ''} />
               {watchtimeData.length > 1 && stats.vsl_plays > 0 ? (
                 <>
                   <ResponsiveContainer width="100%" height={160}>
@@ -229,7 +280,6 @@ export default function Dashboard() {
                       <Area type="monotone" dataKey="retention" stroke="#f59e0b" strokeWidth={2} fill="url(#gW)" name="Retention" />
                     </AreaChart>
                   </ResponsiveContainer>
-                  {/* Pause hotspots */}
                   {stats.vsl_pause_points?.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-zinc-800">
                       <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">⏸️ Häufigste Abbruchstellen</p>
@@ -251,7 +301,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Row 2: Funnel + Hourly + Devices */}
+          {/* Row 2: Funnel + Hourly Heatmap */}
           <div className="grid lg:grid-cols-5 gap-3 mb-3">
             {/* Conversion Funnel */}
             <div className="lg:col-span-2 glow-card p-4">
@@ -270,44 +320,43 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Hourly + Devices stacked */}
-            <div className="lg:col-span-3 grid grid-rows-2 gap-3">
-              {/* Hourly */}
-              <div className="glow-card p-4">
-                <SectionTitle emoji="🕐" title="Besucher nach Uhrzeit" />
-                <div className="flex items-end gap-[3px] h-[80px]">
+            {/* Right column: Hourly + Devices */}
+            <div className="lg:col-span-3 flex flex-col gap-3">
+              {/* Hourly Heatmap */}
+              <div className="glow-card p-4 flex-1">
+                <SectionTitle emoji="🕐" title="Besucher nach Uhrzeit" right="Hover für Details" />
+                <div className="flex items-end gap-[2px] h-[100px]">
                   {hourlyData.map((h, i) => {
                     const pct = maxHourly > 0 ? (h.views / maxHourly) * 100 : 0;
                     const isActive = h.views > 0;
                     return (
-                      <div key={i} className="flex-1 flex flex-col items-center gap-0.5 group relative">
-                        <div className="w-full rounded-sm transition-all" style={{
-                          height: `${Math.max(pct, 3)}%`,
+                      <div key={i} className="flex-1 flex flex-col items-center group relative cursor-default">
+                        <div className="w-full rounded-t-sm transition-all" style={{
+                          height: `${Math.max(pct, 4)}%`,
                           background: isActive ? `linear-gradient(to top, #7c3aed, #2563eb)` : '#1a1a3e',
-                          opacity: isActive ? 0.6 + (pct / 200) : 0.3
+                          opacity: isActive ? 0.5 + (pct / 200) : 0.3
                         }} />
-                        <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-zinc-800 text-white text-[9px] px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
-                          {h.hour}: {h.views}
+                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-800 border border-zinc-700 text-white text-[10px] px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none z-10 shadow-lg">
+                          🕐 {h.hour} → <strong>{h.views}</strong> Besucher
                         </div>
                       </div>
                     );
                   })}
                 </div>
-                <div className="flex justify-between mt-1">
-                  <span className="text-[9px] text-zinc-600">0:00</span>
-                  <span className="text-[9px] text-zinc-600">6:00</span>
-                  <span className="text-[9px] text-zinc-600">12:00</span>
-                  <span className="text-[9px] text-zinc-600">18:00</span>
-                  <span className="text-[9px] text-zinc-600">23:00</span>
+                <div className="flex justify-between mt-1.5 px-0.5">
+                  {[0, 3, 6, 9, 12, 15, 18, 21].map(h => (
+                    <span key={h} className="text-[9px] text-zinc-600">{h}h</span>
+                  ))}
                 </div>
               </div>
 
-              {/* Devices + Referrer combined */}
+              {/* Devices + Testimonials side by side */}
               <div className="grid grid-cols-2 gap-3">
+                {/* Devices */}
                 <div className="glow-card p-4">
                   <SectionTitle emoji="📱" title="Geräte" />
                   {stats.devices.length > 0 ? (
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                       {stats.devices.map((d, i) => {
                         const total = stats.devices.reduce((s, x) => s + parseInt(x.count), 0);
                         const pct = total > 0 ? ((parseInt(d.count) / total) * 100).toFixed(0) : 0;
@@ -329,110 +378,73 @@ export default function Dashboard() {
                   ) : <p className="text-zinc-600 text-xs">Keine Daten</p>}
                 </div>
 
+                {/* Testimonial Videos */}
                 <div className="glow-card p-4">
-                  <SectionTitle emoji="🔗" title="Referrer" />
-                  {stats.top_referrers.length > 0 ? (
-                    <div className="space-y-1.5">
-                      {stats.top_referrers.slice(0, 5).map((r, i) => {
-                        let domain;
-                        try { domain = new URL(r.referrer).hostname.replace('www.', ''); } catch { domain = r.referrer; }
+                  <SectionTitle emoji="🎬" title="Testimonials" right={stats.video_plays?.length > 0 ? `${stats.video_plays.reduce((s, v) => s + parseInt(v.count), 0)} Plays` : ''} />
+                  {stats.video_plays?.length > 0 ? (
+                    <div className="space-y-2.5">
+                      {stats.video_plays.map((v, i) => {
+                        const totalPlays = stats.video_plays.reduce((s, x) => s + parseInt(x.count), 0);
+                        const pct = totalPlays > 0 ? (parseInt(v.count) / totalPlays) * 100 : 0;
                         return (
-                          <div key={i} className="flex justify-between items-center">
-                            <span className="text-xs text-zinc-300 truncate mr-2">{domain}</span>
-                            <span className="text-[10px] font-mono text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">{r.count}</span>
+                          <div key={i}>
+                            <div className="flex justify-between mb-0.5">
+                              <span className="text-xs text-zinc-300 truncate mr-1">🎥 {v.video || v.video_id || 'Video'}</span>
+                              <span className="text-xs text-zinc-500 shrink-0">{v.count}x</span>
+                            </div>
+                            <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full bg-gradient-to-r from-violet-600 to-blue-500" style={{ width: `${pct}%` }} />
+                            </div>
                           </div>
                         );
                       })}
                     </div>
-                  ) : <p className="text-zinc-600 text-xs">Keine Referrer</p>}
+                  ) : (
+                    <p className="text-zinc-600 text-xs text-center py-3">Noch keine Plays</p>
+                  )}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Row 3: Videos + Buttons + UTM */}
-          <div className="grid lg:grid-cols-3 gap-3">
-            {/* Testimonial Videos */}
-            <div className="glow-card p-4">
-              <SectionTitle emoji="🎬" title="Testimonial Videos" right={stats.video_plays?.length > 0 ? `${stats.video_plays.reduce((s, v) => s + parseInt(v.count), 0)} total` : ''} />
-              {stats.video_plays?.length > 0 ? (
-                <div className="space-y-2">
-                  {stats.video_plays.map((v, i) => {
-                    const totalPlays = stats.video_plays.reduce((s, x) => s + parseInt(x.count), 0);
-                    const pct = totalPlays > 0 ? (parseInt(v.count) / totalPlays) * 100 : 0;
-                    return (
-                      <div key={i}>
-                        <div className="flex justify-between mb-0.5">
-                          <span className="text-xs text-zinc-300">🎥 {v.video}</span>
-                          <span className="text-xs text-zinc-500">{v.count}x</span>
-                        </div>
-                        <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                          <div className="h-full rounded-full bg-gradient-to-r from-violet-600 to-blue-500" style={{ width: `${pct}%` }} />
-                        </div>
+          {/* Row 3: Button Klicks (full width) */}
+          <div className="glow-card p-4">
+            <SectionTitle emoji="🖱️" title="Alle Klicks" right={stats.button_clicks?.length > 0 ? `${stats.button_clicks.reduce((s, b) => s + parseInt(b.count), 0)} total` : ''} />
+            {stats.button_clicks?.length > 0 ? (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2">
+                {stats.button_clicks.map((b, i) => {
+                  const label = (b.text || '').replace(/\s+/g, ' ').substring(0, 50);
+                  const totalClicks = stats.button_clicks.reduce((s, x) => s + parseInt(x.count), 0);
+                  const pct = totalClicks > 0 ? (parseInt(b.count) / totalClicks) * 100 : 0;
+                  return (
+                    <div key={i}>
+                      <div className="flex justify-between mb-0.5">
+                        <span className="text-xs text-zinc-300 truncate mr-2">{label || '–'}</span>
+                        <span className="text-xs text-zinc-500 shrink-0">{b.count}x</span>
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-zinc-600 text-xs py-4 text-center">Noch keine Testimonial-Views</p>
-              )}
-            </div>
-
-            {/* Button/CTA Klicks */}
-            <div className="glow-card p-4">
-              <SectionTitle emoji="🖱️" title="Button Klicks" />
-              {stats.button_clicks?.length > 0 ? (
-                <div className="space-y-2">
-                  {stats.button_clicks.map((b, i) => {
-                    const label = (b.text || '').replace(/\s+/g, ' ').substring(0, 40);
-                    const totalClicks = stats.button_clicks.reduce((s, x) => s + parseInt(x.count), 0);
-                    const pct = totalClicks > 0 ? (parseInt(b.count) / totalClicks) * 100 : 0;
-                    return (
-                      <div key={i}>
-                        <div className="flex justify-between mb-0.5">
-                          <span className="text-xs text-zinc-300 truncate mr-2">{label || '–'}</span>
-                          <span className="text-xs text-zinc-500">{b.count}x</span>
-                        </div>
-                        <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                          <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500" style={{ width: `${pct}%` }} />
-                        </div>
+                      <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500" style={{ width: `${pct}%` }} />
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-zinc-600 text-xs py-4 text-center">Noch keine Button-Klicks</p>
-              )}
-            </div>
-
-            {/* UTM Campaigns */}
-            <div className="glow-card p-4">
-              <SectionTitle emoji="🎯" title="Kampagnen & UTM" />
-              {stats.utm_sources?.length > 0 ? (
-                <div className="space-y-2">
-                  {stats.utm_sources.map((u, i) => (
-                    <div key={i} className="flex items-center justify-between bg-zinc-800/40 rounded-lg px-2.5 py-2">
-                      <div className="min-w-0">
-                        <span className="text-xs text-zinc-200 font-medium block truncate">{u.source || '–'}</span>
-                        <span className="text-[10px] text-zinc-500">{u.medium || '–'}{u.campaign ? ` · ${u.campaign}` : ''}</span>
-                      </div>
-                      <span className="text-xs font-mono text-zinc-400 ml-2 shrink-0">{u.count}</span>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="py-4 text-center">
-                  <p className="text-zinc-600 text-xs">Keine UTM-Daten</p>
-                  <p className="text-[10px] text-zinc-700 mt-1">Nutze <span className="text-zinc-500 font-mono">?utm_source=instagram</span></p>
-                  <p className="text-[10px] text-zinc-700">in deinen Links für Kampagnen-Tracking</p>
-                </div>
-              )}
-            </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-zinc-600 text-xs text-center py-2">Noch keine Klicks</p>
+            )}
           </div>
 
           {/* Footer */}
-          <div className="mt-6 text-center text-zinc-700 text-[10px]">
-            🔄 Auto-Refresh alle 30s · Letzte {days} Tage · TERMINIFY.AI Analytics
+          <div className="mt-5 flex items-center justify-center gap-3 text-[10px] text-zinc-700">
+            <span>🔄 Auto-Refresh alle 30s</span>
+            <span>·</span>
+            <span>Letzte {days} Tage</span>
+            {stats.last_activity && (
+              <>
+                <span>·</span>
+                <span>Letzter Besucher: {formatTimeAgo(stats.last_activity)}</span>
+              </>
+            )}
           </div>
         </>
       ) : null}
