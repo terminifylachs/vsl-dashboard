@@ -56,8 +56,8 @@ export async function GET(request) {
       // UTM sources
       sql`SELECT event_data->'data'->>'utm_source' as source, event_data->'data'->>'utm_medium' as medium, COUNT(*) as count FROM events WHERE event_type = 'event' AND event_data->>'name' = 'utm' AND created_at >= ${since} GROUP BY source, medium ORDER BY count DESC LIMIT 10`,
 
-      // Hourly distribution (for heatmap)
-      sql`SELECT EXTRACT(HOUR FROM created_at)::int as hour, COUNT(*) as count FROM page_views WHERE created_at >= ${since} GROUP BY hour ORDER BY hour`,
+      // Hourly distribution (for heatmap) - German timezone
+      sql`SELECT EXTRACT(HOUR FROM created_at AT TIME ZONE 'Europe/Berlin')::int as hour, COUNT(*) as count FROM page_views WHERE created_at >= ${since} GROUP BY hour ORDER BY hour`,
 
       // Today's views (for comparison)
       sql`SELECT COUNT(*) as count FROM page_views WHERE created_at >= DATE_TRUNC('day', NOW())`,
